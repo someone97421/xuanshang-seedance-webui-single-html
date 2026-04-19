@@ -1581,12 +1581,12 @@
             margin-top: 6px;
         }
 
-        .log-cost {
+        /* .log-cost {
             margin-top: 6px;
             font-size: 11px;
             color: var(--success);
             font-weight: 500;
-        }
+        } */
 
         /* ========== 三栏布局与侧面板 ========== */
         .app-wrapper {
@@ -2309,7 +2309,7 @@
 
                                 <button class="btn btn-primary" onclick="submitTask()" style="width: 100%; display: flex; flex-direction: column; align-items: center; padding: 10px;">
                                     <span>🚀 提交生成任务</span>
-                                    <span id="costEstimate" style="font-size: 11px; opacity: 0.8; font-weight: normal; margin-top: 2px;">预估: 0 Tokens (约 0.000 元)</span>
+                                    <!-- <span id="costEstimate" style="font-size: 11px; opacity: 0.8; font-weight: normal; margin-top: 2px;">预估: 0 Tokens (约 0.000 元)</span> -->
                                 </button>
 
                                 <!-- 预览窗口 -->
@@ -2755,7 +2755,7 @@
                 if (index === 0) {
                     hint.style.display = 'none';
                 } else if (index === 1) {
-                    hint.innerHTML = '当前页面已切换为玄上之音平台透传格式。文件上传、素材库、视频生成、字幕擦除和轮询统一使用同一把 <code>API Key</code>，接入点地址支持直接填写开发中的 IP 或域名。';
+                    hint.innerHTML = '';
                 }
             });
         }
@@ -3586,7 +3586,7 @@
 
             applyTheme();
             setupAutoSave();
-            updateEstimate();
+            // updateEstimate();
             restorePanelStates();
         }
 
@@ -3630,7 +3630,7 @@
             };
             localStorage.setItem(STORAGE_KEYS.appConfig, JSON.stringify(config));
             applyTheme();
-            updateEstimate();
+            // updateEstimate();
         }
 
         function formatFetchError(error, targetUrl) {
@@ -3683,7 +3683,7 @@
             window.promptEditorResizeObserver.observe(promptEditor);
         }
 
-        function updateEstimate() {
+        /* function updateEstimate() {
             const model = getSelectedModelId();
             if (!model) return;
 
@@ -3708,7 +3708,7 @@
             if (estimateEl) {
                 estimateEl.textContent = `预估: ${Math.round(tokens).toLocaleString()} Tokens (约 ${cost.toFixed(3)} 元)`;
             }
-        }
+        } */
 
         function onModelSelectChange() {
             saveAllConfigs();
@@ -4096,7 +4096,7 @@
             };
             list.push(asset);
             updateAssetsList();
-            if (type === 'video') updateEstimate();
+            // if (type === 'video') updateEstimate();
             return asset;
         }
 
@@ -4215,7 +4215,7 @@
             assets[key] = assets[key].filter(a => a.id !== id);
             assets[key].forEach((a, i) => a.index = i + 1);
             updateAssetsList();
-            if (type === 'video') updateEstimate();
+            // if (type === 'video') updateEstimate();
 
             const chips = document.getElementById('promptEditor').querySelectorAll('.mention-chip');
             chips.forEach(chip => {
@@ -4708,7 +4708,7 @@
                     saveTaskRecords();
 
                     const normalizedStatus = kind === 'subtitle_erase'
-                        ? (String(result.status || '').toLowerCase() === 'succeeded' ? 'succeeded' : String(result.status || '').toLowerCase() === 'failed' ? 'failed' : 'running')
+                        ? (String(result.status || '').toLowerCase() === 'completed' ? 'succeeded' : String(result.status || '').toLowerCase() === 'failed' ? 'failed' : 'running')
                         : normalizeGenerateTaskStatus(result);
 
                     if (normalizedStatus === 'succeeded') {
@@ -4808,7 +4808,7 @@
                 task.responseLog += `\n\n[报错] 找不到视频连接，完整的响应为: ${JSON.stringify(result)}`;
             }
 
-            if (getTaskKind(task) === 'generate') {
+            /* if (getTaskKind(task) === 'generate') {
                 const hasVideo = task.assets && task.assets.videos && task.assets.videos.length > 0;
                 const usageInfo = calculateCostFromUsage(extractUsageFromTaskResult(result), task.params.model, hasVideo);
                 if (usageInfo.tokens !== null) {
@@ -4840,7 +4840,7 @@
                         usageEstimated: true
                     });
                 }
-            }
+            } */
 
             updateTaskRecordElement(taskId);
             saveTaskRecords();
@@ -5107,9 +5107,9 @@
             container.innerHTML = appLogs.map(log => {
                 const timeStr = new Date(log.time).toLocaleString();
                 const badgeClass = log.type || 'info';
-                const costHtml = log.cost !== undefined
+                /* const costHtml = log.cost !== undefined
                     ? `<div class="log-cost">💰 Token: ${log.tokens !== undefined ? log.tokens.toLocaleString() : '-'} · 费用: ${log.cost} 元</div>`
-                    : '';
+                    : ''; */
                 const detailsHtml = log.details
                     ? `<div class="log-details">${escapeHtml(log.details)}</div>`
                     : '';
@@ -5121,7 +5121,7 @@
                         </div>
                         <div class="log-message">${escapeHtml(log.message)}</div>
                         ${detailsHtml}
-                        ${costHtml}
+
                     </div>
                 `;
             }).join('');
@@ -5134,7 +5134,7 @@
             renderLogs();
         }
 
-        function calculateCostFromUsage(usage, modelId, hasVideo) {
+        /* function calculateCostFromUsage(usage, modelId, hasVideo) {
             let u = usage;
             if (!u || typeof u !== 'object') {
                 return { tokens: null, cost: null };
@@ -5151,7 +5151,7 @@
             }
             const cost = (tokens / 1000000) * pricePerMillion;
             return { tokens, cost: cost.toFixed(4) };
-        }
+        } */
 
         function formatDuration(seconds) {
             if (seconds < 60) {
