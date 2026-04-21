@@ -1914,6 +1914,7 @@
             display: flex;
             gap: 8px;
             margin-bottom: 12px;
+            flex-wrap: wrap;
         }
 
         .library-toolbar .btn {
@@ -1935,11 +1936,56 @@
             align-items: center;
             justify-content: space-between;
             margin-bottom: 8px;
+            gap: 8px;
         }
 
         .group-name {
             font-weight: 600;
             font-size: 13px;
+        }
+
+        .group-header-main {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            min-width: 0;
+            flex: 1;
+        }
+
+        .group-header-main:hover .group-name {
+            color: var(--primary);
+        }
+
+        .group-toggle {
+            width: 28px;
+            height: 28px;
+            border: 1px solid var(--border);
+            background: var(--card-bg);
+            color: var(--text);
+            border-radius: 999px;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            transition: transform .2s ease, background .2s ease, border-color .2s ease;
+            flex-shrink: 0;
+        }
+
+        .group-toggle:hover {
+            background: var(--hover-bg);
+            border-color: var(--primary);
+        }
+
+        .group-card.collapsed .group-toggle {
+            transform: rotate(-90deg);
+        }
+
+        .group-header-actions {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            flex-shrink: 0;
         }
 
         .group-meta {
@@ -1950,6 +1996,25 @@
             gap: 6px;
             margin-bottom: 8px;
             flex-wrap: wrap;
+        }
+
+        .group-content {
+            display: block;
+        }
+
+        .group-card.collapsed .group-content {
+            display: none;
+        }
+
+        .group-description {
+            font-size: 12px;
+            color: var(--text-secondary);
+            margin-bottom: 8px;
+            word-break: break-word;
+        }
+
+        .group-description:empty {
+            display: none;
         }
 
         .copyable-id {
@@ -2410,14 +2475,14 @@
                     <div class="form-group" style="flex: 2;">
                         <label>Assets API Access Key (AK)</label>
                         <div class="password-input">
-                            <input type="password" id="assetsAk" placeholder="用于素材资产库鉴权的 AK，不是 Seedance API Key">
+                            <input type="password" id="assetsAk" placeholder="已废弃：资源库现改走平台 Bearer Token 鉴权">
                             <span class="password-toggle" onclick="togglePassword('assetsAk')">👁️</span>
                         </div>
                     </div>
                     <div class="form-group" style="flex: 2;">
                         <label>Assets API Secret Key (SK)</label>
                         <div class="password-input">
-                            <input type="password" id="assetsSk" placeholder="用于素材资产库鉴权的 SK；留空时可尝试读取本机 VOLC_ACCESSKEY/VOLC_SECRETKEY">
+                            <input type="password" id="assetsSk" placeholder="已废弃：请使用上方 API Key 走平台 Bearer Token">
                             <span class="password-toggle" onclick="togglePassword('assetsSk')">👁️</span>
                         </div>
                     </div>
@@ -2425,11 +2490,12 @@
                 <div class="api-config-hint" style="display:none;">
                     当前版本使用本地 Python 服务代理 Ark 请求。请先运行 <code>python app.py</code>，再通过
                     <code>http://127.0.0.1:18765</code> 打开页面；默认端口使用较少见的 <code>18765</code>，尽量避开常见本地服务冲突。
-                    素材库拉取使用的是火山引擎 <code>AK/SK</code>，不是 Seedance 生成接口里的 <code>API Key</code>。
+                    旧版素材库曾尝试直连火山引擎 <code>AK/SK</code>，当前版本已不再使用该方式。
                 </div>
                 <div class="api-config-hint">
                     当前版本改为浏览器直连，不再依赖本地 Python 代理服务。Seedance 生成接口直接请求 <code>ark.cn-beijing.volces.com</code>，
-                    字幕擦除直接请求 <code>amk.cn-beijing.volces.com</code>，素材库接口使用下方配置的 <code>AK/SK</code> 在前端完成签名。
+                    字幕擦除直接请求 <code>amk.cn-beijing.volces.com</code>，素材库接口走平台网关 <code>/v1/ark-assets/*</code>，
+                    使用平台文档里的 <code>Authorization: Bearer &lt;sk-...&gt;</code> 鉴权方式。
                     如果浏览器报网络错误，通常是目标站点未放开 CORS、被浏览器插件拦截，或当前网络环境无法直连。
                 </div>
                 <div class="input-row">
@@ -2987,83 +3053,6 @@
         }
 
         // ==================== Assets API 调用 ====================
-        function bytesToHex(bytes) {
-            return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
-        }
-
-        function utf8Bytes(text) {
-            return new TextEncoder().encode(text);
-        }
-
-        async function sha256Hex(input) {
-            const bytes = input instanceof Uint8Array ? input : utf8Bytes(String(input || ''));
-            const digest = await crypto.subtle.digest('SHA-256', bytes);
-            return bytesToHex(new Uint8Array(digest));
-        }
-
-        async function hmacSha256(keyBytes, message) {
-            const cryptoKey = await crypto.subtle.importKey(
-                'raw',
-                keyBytes,
-                { name: 'HMAC', hash: 'SHA-256' },
-                false,
-                ['sign']
-            );
-            const signature = await crypto.subtle.sign('HMAC', cryptoKey, utf8Bytes(message));
-            return new Uint8Array(signature);
-        }
-
-        function toVolcDate(date = new Date()) {
-            return date.toISOString().replace(/[:-]|\.\d{3}/g, '');
-        }
-
-        async function buildAssetsSignedHeaders({ ak, sk, region = 'cn-beijing', service = 'ark', host, queryString, bodyText = '', sessionToken = '' }) {
-            const requestDate = toVolcDate();
-            const dateStamp = requestDate.slice(0, 8);
-            const payloadHash = await sha256Hex(bodyText);
-            const canonicalHeaders = [
-                ['content-type', 'application/json; charset=utf-8'],
-                ['host', host],
-                ['x-content-sha256', payloadHash],
-                ['x-date', requestDate]
-            ];
-            if (sessionToken) canonicalHeaders.push(['x-security-token', sessionToken]);
-            canonicalHeaders.sort((a, b) => a[0].localeCompare(b[0]));
-
-            const signedHeaders = canonicalHeaders.map(([k]) => k).join(';');
-            const canonicalRequest = [
-                'POST',
-                '/',
-                queryString,
-                canonicalHeaders.map(([k, v]) => `${k}:${v}\n`).join(''),
-                signedHeaders,
-                payloadHash
-            ].join('\n');
-
-            const credentialScope = `${dateStamp}/${region}/${service}/request`;
-            const stringToSign = [
-                'HMAC-SHA256',
-                requestDate,
-                credentialScope,
-                await sha256Hex(canonicalRequest)
-            ].join('\n');
-
-            let signingKey = await hmacSha256(utf8Bytes(sk), dateStamp);
-            signingKey = await hmacSha256(signingKey, region);
-            signingKey = await hmacSha256(signingKey, service);
-            signingKey = await hmacSha256(signingKey, 'request');
-            const signature = bytesToHex(await hmacSha256(signingKey, stringToSign));
-
-            const headers = {
-                'Content-Type': 'application/json; charset=utf-8',
-                'X-Date': requestDate,
-                'X-Content-Sha256': payloadHash,
-                'Authorization': `HMAC-SHA256 Credential=${ak}/${credentialScope}, SignedHeaders=${signedHeaders}, Signature=${signature}`
-            };
-            if (sessionToken) headers['X-Security-Token'] = sessionToken;
-            return headers;
-        }
-
         async function callAssetsApi(action, body) {
             const endpointMap = {
                 CreateAssetGroup: '/v1/ark-assets/groups',
@@ -3088,6 +3077,54 @@
             return payload;
         }
 
+        function normalizeGroupRecord(group = {}) {
+            return {
+                id: group.id || '',
+                name: group.name || '',
+                description: group.description || '',
+                projectName: group.projectName || 'default',
+                collapsed: Boolean(group.collapsed),
+                assets: Array.isArray(group.assets) ? group.assets.map(asset => ({ ...asset })) : []
+            };
+        }
+
+        function getGroupDisplayName(groupId, assets = [], fallback = '') {
+            const nonEmptyName = assets.find(item => String(item?.GroupId || '') === String(groupId) && String(item?.GroupName || item?.GroupTitle || '').trim());
+            if (nonEmptyName) {
+                return String(nonEmptyName.GroupName || nonEmptyName.GroupTitle).trim();
+            }
+            return fallback || groupId || '未命名组合';
+        }
+
+        async function getAssetGroupDetail(groupId, projectName = 'default') {
+            const resp = await callAssetsApi('GetAssetGroup', {
+                Id: groupId,
+                ProjectName: projectName || 'default'
+            });
+            return resp?.Result || resp || {};
+        }
+
+        function truncateAssetName(rawName, maxLength = 64) {
+            const original = String(rawName || '').trim() || 'unnamed';
+            if (original.length <= maxLength) return original;
+
+            const dotIndex = original.lastIndexOf('.');
+            const hasUsableExt = dotIndex > 0 && dotIndex < original.length - 1;
+            const ext = hasUsableExt ? original.slice(dotIndex) : '';
+            const base = hasUsableExt ? original.slice(0, dotIndex) : original;
+            const safeExt = ext.length >= maxLength ? '' : ext;
+            const maxBaseLength = Math.max(1, maxLength - safeExt.length);
+            return `${base.slice(0, maxBaseLength)}${safeExt}`;
+        }
+
+        function createUploadFileWithSafeName(file, safeName) {
+            if (!file || !safeName || file.name === safeName) return file;
+            return new File([file], safeName, {
+                type: file.type,
+                lastModified: file.lastModified
+            });
+        }
+
         // ==================== 资源库：创建 Group ====================
         async function doCreateGroup() {
             const name = document.getElementById('newGroupName').value.trim();
@@ -3108,6 +3145,7 @@
                     name,
                     description: desc,
                     projectName: project,
+                    collapsed: false,
                     assets: []
                 });
                 saveAssetLibrary();
@@ -3129,63 +3167,31 @@
             if (!rawId) { alert('请输入 ID'); return; }
             try {
                 if (rawId.startsWith('group-')) {
-                    // 拉取 group 信息
-                    const groupResp = await callAssetsApi('GetAssetGroup', { Id: rawId, ProjectName: project });
-                    const groupData = groupResp?.Result || groupResp;
-                    let group = assetLibrary.groups.find(g => g.id === rawId);
-                    if (!group) {
-                        group = {
-                            id: rawId,
-                            name: groupData?.Name || '未命名组合',
-                            description: groupData?.Description || '',
-                            projectName: project,
-                            assets: []
-                        };
-                        assetLibrary.groups.push(group);
-                    } else {
-                        group.name = groupData?.Name || group.name;
-                        group.description = groupData?.Description || group.description;
-                        group.projectName = project;
-                    }
-                    // 拉取 assets
-                    let page = 1;
-                    let pulled = 0;
-                    while (true) {
-                        const listResp = await callAssetsApi('ListAssets', {
-                            Filter: { GroupIds: [rawId], GroupType: 'AIGC' },
-                            PageNumber: page,
-                            PageSize: 100,
-                            ProjectName: project
-                        });
-                        const items = listResp?.Result?.Items || listResp?.Items || [];
-                        const total = listResp?.Result?.TotalCount || listResp?.TotalCount || 0;
-                        for (const item of items) {
-                            upsertLibraryAsset(item, group);
-                        }
-                        pulled += items.length;
-                        if (pulled >= total || items.length === 0) break;
-                        page++;
-                    }
+                    const { group, pulled } = await refreshAssetGroup(rawId, { projectName: project });
                     saveAssetLibrary();
                     renderAssetLibrary();
                     closePullModal();
-                    addLog('success', '拉取组合成功', `${rawId}，共 ${pulled} 个素材`);
+                    addLog('success', '拉取组合成功', `${group.id}，共 ${pulled} 个素材`);
                 } else if (rawId.startsWith('asset-') || rawId.startsWith('Asset-')) {
                     const assetResp = await callAssetsApi('GetAsset', { Id: rawId, ProjectName: project });
                     const item = assetResp?.Result || assetResp;
                     if (!item?.GroupId) throw new Error('Asset 信息中缺少 GroupId');
-                    // 拉取对应 group
+                    const detail = await getAssetGroupDetail(item.GroupId, item.ProjectName || project);
                     let group = assetLibrary.groups.find(g => g.id === item.GroupId);
                     if (!group) {
-                        try {
-                            const groupResp = await callAssetsApi('GetAssetGroup', { Id: item.GroupId, ProjectName: project });
-                            const gd = groupResp?.Result || groupResp;
-                            group = { id: item.GroupId, name: gd?.Name || '未命名组合', description: gd?.Description || '', projectName: project, assets: [] };
-                            assetLibrary.groups.push(group);
-                        } catch (e) {
-                            group = { id: item.GroupId, name: '未命名组合', description: '', projectName: project, assets: [] };
-                            assetLibrary.groups.push(group);
-                        }
+                        group = normalizeGroupRecord({
+                            id: item.GroupId,
+                            name: detail.Name || item.GroupName || item.GroupTitle || item.GroupId,
+                            description: detail.Description || '',
+                            projectName: detail.ProjectName || item.ProjectName || project,
+                            collapsed: false,
+                            assets: []
+                        });
+                        assetLibrary.groups.push(group);
+                    } else {
+                        group.name = detail.Name || group.name;
+                        group.description = detail.Description || group.description || '';
+                        group.projectName = detail.ProjectName || item.ProjectName || project;
                     }
                     upsertLibraryAsset(item, group);
                     saveAssetLibrary();
@@ -3198,6 +3204,75 @@
             } catch (e) {
                 alert('拉取失败: ' + e.message);
                 addLog('error', '拉取资源失败', e.message);
+            }
+        }
+
+        async function refreshAssetGroup(groupId, options = {}) {
+            const existingGroup = assetLibrary.groups.find(g => g.id === groupId);
+            const projectName = options.projectName || existingGroup?.projectName || 'default';
+            let group = existingGroup;
+
+            if (!group) {
+                group = normalizeGroupRecord({
+                    id: groupId,
+                    name: groupId,
+                    description: '',
+                    projectName,
+                    collapsed: false,
+                    assets: []
+                });
+                assetLibrary.groups.push(group);
+            } else {
+                group.projectName = projectName;
+            }
+
+            let page = 1;
+            let pulled = 0;
+            const latestAssets = [];
+            const detail = await getAssetGroupDetail(groupId, projectName);
+
+            group.name = detail.Name || group.name || groupId;
+            group.description = detail.Description || group.description || '';
+            group.projectName = detail.ProjectName || projectName;
+
+            while (true) {
+                const listResp = await callAssetsApi('ListAssets', {
+                    Filter: {
+                        GroupIds: [groupId],
+                        GroupType: 'AIGC'
+                    },
+                    PageNumber: page,
+                    PageSize: 100,
+                    SortBy: 'CreateTime',
+                    SortOrder: 'Desc',
+                    ProjectName: projectName
+                });
+                const result = listResp?.Result || listResp || {};
+                const items = result.Items || [];
+                const total = result.TotalCount || 0;
+                latestAssets.push(...items);
+                pulled += items.length;
+                if (pulled >= total || items.length === 0) break;
+                page++;
+            }
+
+            group.assets = [];
+            latestAssets.forEach(item => upsertLibraryAsset(item, group));
+            group.name = detail.Name || getGroupDisplayName(groupId, latestAssets, group.name);
+            return { group, pulled: latestAssets.length };
+        }
+
+        async function refreshSingleAssetGroup(groupId) {
+            const group = assetLibrary.groups.find(g => g.id === groupId);
+            if (!group) return;
+            try {
+                await refreshAssetGroup(groupId, { projectName: group.projectName });
+                saveAssetLibrary();
+                renderAssetLibrary();
+                addLog('success', '资源组刷新成功', `${group.name || groupId} (${groupId})`);
+            } catch (e) {
+                alert('刷新资源组失败: ' + e.message);
+                addLog('error', '资源组刷新失败', `${groupId}\n${e.message}`);
             }
         }
 
@@ -3220,7 +3295,6 @@
             } else {
                 group.assets.push(asset);
             }
-            // 如果需要轮询
             if (asset.status === 'Processing') {
                 startAssetPolling(asset.id, group.id);
             }
@@ -3239,6 +3313,9 @@
                 const idx = g.assets.findIndex(a => a.id === assetId);
                 if (idx !== -1) {
                     g.assets.splice(idx, 1);
+                    if (g.assets.length === 0) {
+                        assetLibrary.groups = assetLibrary.groups.filter(group => group.id !== g.id);
+                    }
                     break;
                 }
             }
@@ -3305,10 +3382,13 @@
                 addLog('warning', '不支持的文件类型', file.name);
                 return;
             }
+            const safeFileName = truncateAssetName(file.name, 64);
+            const uploadFile = createUploadFileWithSafeName(file, safeFileName);
+            const assetName = truncateAssetName(safeFileName.replace(/\.[^/.]+$/, ''), 64);
             // 1. 上传到 Litterbox 获取公共 URL
             const tempAsset = {
                 id: 'temp-' + Date.now() + '-' + Math.floor(Math.random()*1000),
-                name: file.name.replace(/\.[^/.]+$/, '').slice(0, 64),
+                name: assetName,
                 url: '',
                 assetType,
                 status: 'Uploading',
@@ -3319,7 +3399,7 @@
             renderAssetLibrary();
 
             try {
-                const url = await uploadFileWithFallback(file);
+                const url = await uploadFileWithFallback(uploadFile);
                 tempAsset.url = url;
                 tempAsset.status = 'Creating';
                 renderAssetLibrary();
@@ -3437,6 +3517,14 @@
             assetPollTimers.set(assetId, timer);
         }
 
+        function toggleGroupCollapse(groupId) {
+            const group = assetLibrary.groups.find(g => g.id === groupId);
+            if (!group) return;
+            group.collapsed = !group.collapsed;
+            saveAssetLibrary();
+            renderAssetLibrary();
+        }
+
         // ==================== 资源库：渲染 ====================
         function renderAssetLibrary() {
             const container = document.getElementById('assetLibraryList');
@@ -3477,21 +3565,32 @@
                         <span class="add-icon">➕</span>
                     </div>
                 `;
+                const collapsedClass = g.collapsed ? 'collapsed' : '';
                 return `
-                    <div class="group-card"
+                    <div class="group-card ${collapsedClass}"
                         onmouseenter="setPasteGroup('${g.id}')"
                         onmouseleave="clearPasteGroup()">
                         <div class="group-header">
-                            <span class="group-name">${escapeHtml(g.name || '未命名')}</span>
-                            <button class="btn btn-danger btn-sm" onclick="deleteGroup('${g.id}')" title="删除组合">🗑️</button>
+                            <button class="group-header-main" onclick="toggleGroupCollapse('${g.id}')" title="${g.collapsed ? '展开资源组' : '折叠资源组'}" style="all:unset;display:flex;align-items:center;gap:8px;min-width:0;flex:1;cursor:pointer;">
+                                <span class="group-toggle">⌄</span>
+                                <span class="group-name">${escapeHtml(g.name || '未命名')}</span>
+                            </button>
+                            <div class="group-header-actions">
+                                <button class="btn btn-secondary btn-sm" onclick="refreshSingleAssetGroup('${g.id}')" title="刷新资源组">🔄</button>
+                                <button class="btn btn-danger btn-sm" onclick="deleteGroup('${g.id}')" title="删除组合">🗑️</button>
+                            </div>
                         </div>
-                        <div class="group-meta">
-                            <span class="copyable-id" onclick="copyText('${g.id}')" title="点击复制">${g.id}</span>
-                            <span>${g.assets.length} 个素材</span>
-                        </div>
-                        <div class="asset-grid">
-                            ${assetsHtml}
-                            ${dropZone}
+                        <div class="group-content">
+                            <div class="group-meta">
+                                <span class="copyable-id" onclick="copyText('${g.id}')" title="点击复制">${g.id}</span>
+                                <span>${g.assets.length} 个素材</span>
+                                <span>项目：${escapeHtml(g.projectName || 'default')}</span>
+                            </div>
+                            <div class="group-description">${escapeHtml(g.description || '')}</div>
+                            <div class="asset-grid">
+                                ${assetsHtml}
+                                ${dropZone}
+                            </div>
                         </div>
                     </div>
                 `;
@@ -3544,18 +3643,33 @@
 
         // ==================== 资源库：本地存储 ====================
         function saveAssetLibrary() {
-            localStorage.setItem(STORAGE_KEYS.assetLibrary, JSON.stringify(assetLibrary));
+            const normalized = {
+                groups: Array.isArray(assetLibrary.groups)
+                    ? assetLibrary.groups.map(group => normalizeGroupRecord(group))
+                    : []
+            };
+            assetLibrary = normalized;
+            localStorage.setItem(STORAGE_KEYS.assetLibrary, JSON.stringify(normalized));
         }
         function loadAssetLibrary() {
             try {
                 const raw = localStorage.getItem(STORAGE_KEYS.assetLibrary);
-                if (raw) assetLibrary = JSON.parse(raw);
+                if (raw) {
+                    const parsed = JSON.parse(raw);
+                    assetLibrary = {
+                        groups: Array.isArray(parsed?.groups)
+                            ? parsed.groups.map(group => normalizeGroupRecord(group))
+                            : []
+                    };
+                } else {
+                    assetLibrary = { groups: [] };
+                }
             } catch (e) { assetLibrary = { groups: [] }; }
             renderAssetLibrary();
             // 恢复运行中素材的轮询
             for (const g of assetLibrary.groups) {
                 for (const a of g.assets) {
-                    if (a.status === 'Processing' || a.status === 'Uploading' || a.status === 'Creating') {
+                    if (a.status === 'Processing' && !String(a.id || '').startsWith('temp-')) {
                         startAssetPolling(a.id, g.id);
                     }
                 }
